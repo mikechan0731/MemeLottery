@@ -1,112 +1,108 @@
-#-*-coding: utf-8-*-
+# -*-coding: utf-8-*-
 # editor: MikeChan
 # email: m7807031@gmail.com
- 
+
 # OS import
-import os, random
+import os
+import random
 import sqlite3
 from datetime import date
 
-# Parser import 
+# Parser import
 import requests
 from urllib import request
 from bs4 import BeautifulSoup
 
-#===== Global Variables
+# ===== Page Structure =====#
+# base_link[years_group] -> single_year[chapters_group]
+# -> single_chapter[memes_group] -> meme_info
 
+# ===== Global Variables ===== #
+years = ['2011', '2012', '2013', '2014', '2015', '2016', '2017', '2018', '2019']
 
-#===== Structure
-# base_link-> years_group -> single_year -> chapters_group -> chapter -> memes_group -> meme_url  
-
-
-def return_one_meme_url(url:str = 'http://hornydragon.blogspot.com/2019/06/1113.html'):
+# ====== functions ===== #
+def return_memeinfo_from_chapter_url(url="http://hornydragon.blogspot.com/2019/06/1116.html"):
     target = url
     res = requests.get(target)
     soup = BeautifulSoup(res.text, "html.parser")
-    page_content = []
+    memes_group = []
 
     # page infomation
     title = soup.title.text.split(':')[1].strip()
     chapter = target.split('/')[-1].split('.')[0]
     raw_date = soup.find("abbr").text.strip().split(" ")[0].split("/")
+    
+    # date process 
     year = raw_date[2]
-    if len(raw_date[0]) < 2: month =  "0" + raw_date[0]
-    else: month = raw_date[0]
-    if len(raw_date[1])<2: day = "0" + raw_date[1]
-    else: day = raw_date[1]
+    if len(raw_date[0]) < 2:
+        month = "0" + raw_date[0]
+    else:
+        month = raw_date[0]
+    if len(raw_date[1]) < 2:
+        day = "0" + raw_date[1]
+    else:
+        day = raw_date[1]
     date = "{}-{}-{}".format(year, month, day)
 
     tbody_tags = soup.find_all('tbody')
     count = 1
     for tbody in tbody_tags:
         if tbody.img and tbody.text:
-            img_url = "http://" + tbody.img['src']
+            img_url = tbody.img['src']
             img_comment = tbody.text.strip()
-            img_name = date + "-" + chapter + "-" + "{:0>3d}".format(count)
+            img_name = date + "-" + chapter + "-" + "{:0>3d}".format(count) + ".jpg"
             count += 1
-            output_dict = {"img_name":img_name, "img_url":img_url, "img_comment":img_comment, 
-                           "img_date":date, "chapter": chapter, "owner": "hornydragon",
-                           "tag":"", "rank": ""}
-            page_content.append(output_dict)
-    print("*** Meme number: " + str(len(page_content)))
-    return page_content
+            output_dict = { "img_name": img_name, 
+                            "img_url": img_url, 
+                            "img_comment": img_comment,
+                            "img_date": date, 
+                            "chapter": chapter, 
+                            "owner": u"好色龍",
+                           }
+            memes_group.append(output_dict)
+    print("chapter {0}, Meme number: {1}".format(chapter, str(len(memes_group))))
+    return memes_group
 
-def update_meme_urls():
-    b_url='https://hornydragon.blogspot.com/'
-    years = ['2011','2012','2013','2014','2015','2016','2017','2018', '2019']
-    single_year_urls ={}
-    All_YEAR_URLS = []
-    for year in years:
-        print( year + " is updating.")
-        target = b_url + year + '/'
-        res = requests.get(target)
-        soup = BeautifulSoup(res.text, "html.parser")
-       
-        alllink_urls =[]
-        almost_right_urls=[]
+# input sample: '2011', '2012' ... '2019'
+def return_chapters_group_from_year(input_year:str='2016'):
+    b_url = 'https://hornydragon.blogspot.com/'
 
-        #抓出網頁內所有連結
-        a_tags = soup.find_all('a')
-        for a in a_tags:
-            if a.text.startswith(u'雜七雜八短篇'):
-                alllink_urls.append(a['href'])
+    print("{}".format(input_year) + " is updating.")
+    target = b_url + input_year + '/'
+    res = requests.get(target)
+    soup = BeautifulSoup(res.text, "html.parser")
 
-        #抓出所有連結開頭是好色龍網址, 結尾是.html
-        for i in alllink_urls:
-            if i.startswith('https://hornydragon.blogspot.com/') and i.endswith('.html'):
-                almost_right_urls.append(i)
+    # get all link from url
+    a_tags = soup.find_all('a')
+    alllink_urls = []
+    for a in a_tags:
+        if a.text.startswith(u'雜七雜八短篇'):
+            alllink_urls.append(a['href'])
 
-        single_year_urls = {"year": year, "chapters_urls": set(almost_right_urls)}
-        All_YEAR_URLS.append(single_year_urls)
+    # get link which starts with hornydragon url, end with ".html"
+    chapter_urls = []
+    for i in alllink_urls:
+        if i.startswith('https://hornydragon.blogspot.com/') and i.endswith('.html'):
+            chapter_urls.append(i)
+    return chapter_urls
 
-    return All_YEAR_URLS
-
-def update_to_sql():
-    ALL_MEMEs = []
-    All_YEAR_URLS = update_meme_urls()
-    #print(All_YEAR_URLS)
-
-    for YEAR_DICT in All_YEAR_URLS:
-        print("====={}=====".format(YEAR_DICT["year"]))
-        #print(YEAR_DICT["chapters_urls"])
-        chapter_count = 0
-        for chapter_url in YEAR_DICT['chapters_urls']:
-            chapter_count += 1
-            print("Chapter " + str(chapter_count))
-            memes_list = return_one_meme_url(chapter_url)
-            for meme_info in memes_list:
-                ALL_MEMEs.append(meme_info)
-    return ALL_MEMEs        
-
-def get_and_save(img_url):
-    request.urlretrieve(img_url, "pics/%s" %img_url.split('/')[-1])
+def get_and_save(MEME_INFO):
+    request.urlretrieve(MEME_INFO['img_url'], "pics/{}".format(MEME_INFO['img_name']))
 
 def create_sql():
-    conn = sqlite3.connect('memes.db')
+    conn = sqlite3.connect('meme_lottery.db')
     c = conn.cursor()
+    c.execute('''CREATE TABLE SUMMARY(
+        ID INT PRIMARY KEY NOT NULL,
+        YEAR DATETIME,
+        LAST_UPDATE DATETIME,
+        FID INT
+    );
+    '''
+    )
     c.execute('''CREATE TABLE MEMES(
-            ID INT PRIMARY KEY NOT NULL,
-            IMG_NAME TEXT NOT NULL,
+            ID INT PRIMARY KEY,
+            IMG_NAME TEXT,
             IMG_URL TEXT,
             IMG_COMMENT TEXT,
             IMG_DATE DATETIME,
@@ -122,37 +118,40 @@ def create_sql():
     conn.commit()
     conn.close()
 
-def push_to_sql(MEME_INFO):
+def push_memeinfo_to_sql(MEME_INFO, count):
     MEME_INFO = MEME_INFO
-    conn = sqlite3.connect('memes.db')
+    conn = sqlite3.connect('meme_lottery.db')
     c = conn.cursor()
-    c.execute("INSERT INTO MEMES (IMG_NAME, IMG_URL, IMG_COMMENT, \
-                                  IMG_DATE, CHAPTER, OWNER, TAG, RANK)\
-               VALUES ({0},{1},{2},{3},{4},{5},{6},{7})".format(
-                   MEME_INFO["img_name"], MEME_INFO["img_url"], MEME_INFO["img_comment"],
-                   MEME_INFO["img_date"], MEME_INFO["chapter"], MEME_INFO["owner"],
-                   MEME_INFO["tag"], MEME_INFO["rank"] )
-            )
+    c.execute("INSERT INTO MEMES (ID, IMG_NAME, IMG_URL, IMG_COMMENT, \
+                                  IMG_DATE, CHAPTER, OWNER)\
+               VALUES (?,?,?,?,?,?,?)", 
+        (count, MEME_INFO["img_name"], MEME_INFO["img_url"], MEME_INFO["img_comment"],
+        MEME_INFO["img_date"], MEME_INFO["chapter"], MEME_INFO["owner"])
+    )
     conn.commit()
     conn.close()
 
 
 def main():
-    create_sql()
-    #ALL_MEMEs = update_to_sql()
-    print("All meme's dictionary is ready.")
+    # ===== SQL Test
+    #create_sql()
     
-    for meme_info in ALL_MEMEs:
-        print(i)
-        push_to_sql(meme_info)
-
+    # ===== Function Test
+    chapter_list = return_chapters_group_from_year()
+    rd_chapters = random.choice(chapter_list)
+    rd_memes = return_memeinfo_from_chapter_url(rd_chapters)
+    rd_memeinfo = random.choice(rd_memes)
+    
+    get_and_save(rd_memeinfo)
+    #push_memeinfo_to_sql(rd_memeinfo, 1)
+    
 
 
 if __name__ == "__main__":
     main()
 
 
-#===================reference
+# ===================reference
 '''
 for i in meme_urls:
 print(i)
@@ -170,8 +169,3 @@ random_meme = "https:" + random_meme
 
 return(random_meme)
 '''
-
-
-
-
-

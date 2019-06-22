@@ -18,11 +18,19 @@ from bs4 import BeautifulSoup
 # -> single_chapter[memes_group] -> meme_info
 
 # ===== Global Variables ===== #
-years = ['2011', '2012', '2013', '2014', '2015', '2016', '2017', '2018', '2019']
+
 
 # ====== functions ===== #
+# TODO
+# 1. Special html type.
+# 2. Check chapter list logic.
+# 3. Check push to sql sequence.
+
+
+
 def return_memeinfo_from_chapter_url(url="http://hornydragon.blogspot.com/2019/06/1116.html"):
-    target = url
+    url2 = "http://hornydragon.blogspot.com/2019/04/1091.html"
+    target = url2
     res = requests.get(target)
     soup = BeautifulSoup(res.text, "html.parser")
     memes_group = []
@@ -48,12 +56,20 @@ def return_memeinfo_from_chapter_url(url="http://hornydragon.blogspot.com/2019/0
     count = 1
     for tbody in tbody_tags:
         if tbody.img and tbody.text:
-            img_url = tbody.img['src']
+            raw_url = tbody.img['src'].strip()
+            if raw_url.startswith("http"):
+                img_url = raw_url
+            else:
+                img_url = "https:" + raw_url
+            img_size = int(request.urlopen(img_url).info()['Content-Length'])
+            img_type = "." + img_url.split(".")[-1]
             img_comment = tbody.text.strip()
-            img_name = date + "-" + chapter + "-" + "{:0>3d}".format(count) + ".jpg"
+            img_name = date + "-" + chapter + "-" + "{:0>3d}".format(count) + img_type
             count += 1
+
             output_dict = { "img_name": img_name, 
                             "img_url": img_url, 
+                            "img_size": img_size,
                             "img_comment": img_comment,
                             "img_date": date, 
                             "chapter": chapter, 
@@ -89,83 +105,89 @@ def return_chapters_group_from_year(input_year:str='2016'):
 def get_and_save(MEME_INFO):
     request.urlretrieve(MEME_INFO['img_url'], "pics/{}".format(MEME_INFO['img_name']))
 
-def create_sql():
-    conn = sqlite3.connect('meme_lottery.db')
-    c = conn.cursor()
-    c.execute('''CREATE TABLE SUMMARY(
-        ID INT PRIMARY KEY NOT NULL,
-        YEAR DATETIME,
-        LAST_UPDATE DATETIME,
-        FID INT
-    );
-    '''
-    )
-    c.execute('''CREATE TABLE MEMES(
-            ID INT PRIMARY KEY,
-            IMG_NAME TEXT,
-            IMG_URL TEXT,
-            IMG_COMMENT TEXT,
-            IMG_DATE DATETIME,
-            CHAPTER INT,
-            OWNER TEXT,
-            TAG TEXT,
-            RANK INT,
-            PICK_DATE DATETIME,
-            UPDATE_DATE DATETIME
+def create_sql(db_name="meme_lottery.db"):
+    if os.path.exists(db_name):
+        pass
+    else:
+        conn = sqlite3.connect(db_name)
+        c = conn.cursor()
+        c.execute('''CREATE TABLE LOG(
+            ID INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+            LAST_UPDATE DATETIME,
+            FID INTEGER
         );
         '''
-    )
-    conn.commit()
-    conn.close()
+        )
+        c.execute('''CREATE TABLE MEMES(
+                ID INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                IMG_NAME TEXT UNIQUE,
+                IMG_URL TEXT UNIQUE,
+                IMG_COMMENT TEXT,
+                IMG_SIZE INTEGER,
+                IMG_DATE DATETIME,
+                CHAPTER INTEGER,
+                OWNER TEXT,
+                TAG TEXT,
+                RANK INTEGER,
+                PICK_DATE DATETIME,
+                UPDATE_DATE DATETIME
+            );
+            '''
+        )
+        conn.commit()
+        conn.close()
 
-def push_memeinfo_to_sql(MEME_INFO, count):
+def push_memeinfo_to_sql(MEME_INFO):
     MEME_INFO = MEME_INFO
     conn = sqlite3.connect('meme_lottery.db')
     c = conn.cursor()
-    c.execute("INSERT INTO MEMES (ID, IMG_NAME, IMG_URL, IMG_COMMENT, \
+    c.execute("INSERT OR IGNORE INTO MEMES (IMG_NAME, IMG_URL, IMG_COMMENT, IMG_SIZE,\
                                   IMG_DATE, CHAPTER, OWNER)\
                VALUES (?,?,?,?,?,?,?)", 
-        (count, MEME_INFO["img_name"], MEME_INFO["img_url"], MEME_INFO["img_comment"],
-        MEME_INFO["img_date"], MEME_INFO["chapter"], MEME_INFO["owner"])
+        (MEME_INFO["img_name"], MEME_INFO["img_url"], MEME_INFO["img_comment"], 
+         MEME_INFO["img_size"], MEME_INFO["img_date"], MEME_INFO["chapter"], 
+         MEME_INFO["owner"])
     )
     conn.commit()
     conn.close()
 
+def clear_sql_table(table_name):
+    conn = sqlite3.connect('meme_lottery.db')
+    c = conn.cursor()
+    c.execute("DELETE FROM " + table_name)
+    conn.commit()
+    conn.close()
+    print("Table " + table_name + " is clear.")
+
+def update_and_push_all_to_sql(years_list):
+    clear_sql_table('MEMES')
+    for year in years_list:
+        print("====={}=====".format(year))
+        chapter_list = return_chapters_group_from_year(year)
+        for chapter_url in chapter_list:
+            memes_group = return_memeinfo_from_chapter_url(chapter_url)
+            for meme_info in memes_group:
+                push_memeinfo_to_sql(meme_info)
+    print("Done.")
 
 def main():
+    #years = ['2011','2012','2013','2014','2015','2016','2017','2018','2019']
+    #years = ['2019']
+    
     # ===== SQL Test
-    #create_sql()
-    
+    create_sql()
+    #update_and_push_all_to_sql(years)
+
     # ===== Function Test
-    chapter_list = return_chapters_group_from_year()
-    rd_chapters = random.choice(chapter_list)
-    rd_memes = return_memeinfo_from_chapter_url(rd_chapters)
-    rd_memeinfo = random.choice(rd_memes)
-    
-    get_and_save(rd_memeinfo)
-    #push_memeinfo_to_sql(rd_memeinfo, 1)
-    
+    #chapter_list = return_chapters_group_from_year()
+    #rd_chapters = random.choice(chapter_list)
+    #rd_memes = return_memeinfo_from_chapter_url(rd_chapters)
+    #rd_memeinfo = random.choice(rd_memes)
+    #push_memeinfo_to_sql(rd_memeinfo)
+        
+    #get_and_save(rd_memeinfo)
 
-
+    # ===== type2
+    print(return_memeinfo_from_chapter_url())
 if __name__ == "__main__":
     main()
-
-
-# ===================reference
-'''
-for i in meme_urls:
-print(i)
-print(requests.head(i).headers)
-
-#將所有梗圖存入梗圖資料夾
-for i in meme_urls:
-request.urlretrieve(i, "%s\\%s_%s" %(title, chapter, i.split('/')[-1]))
-print('%s is saved.'%(i))
-
-#從 meme_list 隨機找一個丟出來
-random_meme = random.choice(meme_urls)
-if random_meme.startswith('//'):
-random_meme = "https:" + random_meme
-
-return(random_meme)
-'''

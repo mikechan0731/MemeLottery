@@ -24,13 +24,12 @@ from bs4 import BeautifulSoup
 # TODO
 # 1. Special html type.
 # 2. Check chapter list logic.
-# 3. Check push to sql sequence.
-
+# 3. Check chapter sequence.
+# 4. Check chapter name
 
 
 def return_memeinfo_from_chapter_url(url="http://hornydragon.blogspot.com/2019/06/1116.html"):
-    url2 = "http://hornydragon.blogspot.com/2019/04/1091.html"
-    target = url2
+    target = url
     res = requests.get(target)
     soup = BeautifulSoup(res.text, "html.parser")
     memes_group = []
@@ -52,6 +51,32 @@ def return_memeinfo_from_chapter_url(url="http://hornydragon.blogspot.com/2019/0
         day = raw_date[1]
     date = "{}-{}-{}".format(year, month, day)
 
+
+    #find img tags
+    img_tags = soup.find_all('img')
+    count_nocomment = 1
+    for img in img_tags:
+        if img.parent.parent.name == "td":
+            pass
+        else:
+            if img['src'].startswith('http') and img['src'].endswith('.jpg'):
+                img_url = img['src']
+                img_size = int(request.urlopen(img_url).info()['Content-Length'])
+                img_type = "." + img_url.split(".")[-1]
+                img_comment = ""
+                img_name = date + "-" + chapter + "-n-" + "{:0>3d}".format(count_nocomment) + img_type
+                count_nocomment += 1
+
+                output_dict = { "img_name": img_name, 
+                                "img_url": img_url, 
+                                "img_size": img_size,
+                                "img_comment": img_comment,
+                                "img_date": date, 
+                                "chapter": chapter, 
+                                "owner": u"好色龍",
+                            }
+                memes_group.append(output_dict)
+   
     tbody_tags = soup.find_all('tbody')
     count = 1
     for tbody in tbody_tags:
@@ -61,6 +86,7 @@ def return_memeinfo_from_chapter_url(url="http://hornydragon.blogspot.com/2019/0
                 img_url = raw_url
             else:
                 img_url = "https:" + raw_url
+
             img_size = int(request.urlopen(img_url).info()['Content-Length'])
             img_type = "." + img_url.split(".")[-1]
             img_comment = tbody.text.strip()
@@ -171,12 +197,12 @@ def update_and_push_all_to_sql(years_list):
     print("Done.")
 
 def main():
-    #years = ['2011','2012','2013','2014','2015','2016','2017','2018','2019']
+    years = ['2011','2012','2013','2014','2015','2016','2017','2018','2019']
     #years = ['2019']
     
     # ===== SQL Test
     create_sql()
-    #update_and_push_all_to_sql(years)
+    update_and_push_all_to_sql(years)
 
     # ===== Function Test
     #chapter_list = return_chapters_group_from_year()
@@ -187,7 +213,5 @@ def main():
         
     #get_and_save(rd_memeinfo)
 
-    # ===== type2
-    print(return_memeinfo_from_chapter_url())
 if __name__ == "__main__":
     main()
